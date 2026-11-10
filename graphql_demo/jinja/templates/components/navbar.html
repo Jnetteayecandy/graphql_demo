@@ -1,0 +1,22 @@
+<div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid #e5e7eb;">
+    <div style="display: flex; align-items: center; gap: 16px;">
+        <h3 style="margin: 0; color: #1f2937;">Dashboard Jinja</h3>
+        <a href="/dashboard" style="text-decoration: none; color: #2563eb; font-weight: 500; font-size: 14px;">Items</a>
+    </div>
+    <div style="display: flex; align-items: center; gap: 14px;">
+        {% if user %}
+            <span style="font-size: 14px; color: #4b5563;">
+                👤 สวัสดี, <strong>{{ user }}</strong>
+            </span>
+            <a href="/logout" style="text-decoration: none;">
+                <button type="button" style="padding: 6px 12px; background: #ef4444; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: background 0.2s;">
+                    Logout
+                </button>
+            </a>
+        {% else %}
+            <a href="/login" style="text-decoration: none; color: #2563eb; font-size: 14px; font-weight: 500;">
+                Login
+            </a>
+        {% endif %}
+    </div>
+</div>

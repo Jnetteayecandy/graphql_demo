@@ -1,0 +1,42 @@
+[
+  {
+    "id": 4,
+    "name": "Lettuce",
+    "amount": 3,
+    "status": "LOW"
+  },
+  {
+    "id": 5,
+    "name": "Radish",
+    "amount": 10
+  },
+  {
+    "id": 6,
+    "name": "Apple",
+    "amount": 6
+  },
+  {
+    "id": 7,
+    "name": "апельсин",
+    "amount": 9,
+    "status": "Pending"
+  },
+  {
+    "id": 8,
+    "name": "яблоко",
+    "amount": 2,
+    "status": "OK"
+  },
+  {
+    "id": 9,
+    "name": "купить айфон",
+    "amount": 9,
+    "status": "Out of stock"
+  },
+  {
+    "id": 10,
+    "name": "маринованный огурец",
+    "amount": 4,
+    "status": "Pending"
+  }
+]

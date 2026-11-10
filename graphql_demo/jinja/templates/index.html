@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="margin-bottom: 24px;">
+    {% if edit_item %}
+        <!-- ฟอร์มตอนกดแก้ไข (Edit Mode) -->
+        <h3>Edit Item</h3>
+        <form action="/items/edit/{{ edit_item.id }}" method="post" style="display: flex; gap: 8px; align-items: center; margin-top: 10px;">
+            <input type="text" name="name" value="{{ edit_item.name }}" required style="padding: 6px 10px;">
+            <input type="number" name="amount" value="{{ edit_item.amount }}" required style="padding: 6px 10px; width: 90px;">
+            <select name="status" style="padding: 6px 10px;">
+                <option value="OK" {% if edit_item.status == 'OK' %}selected{% endif %}>OK</option>
+                <option value="LOW" {% if edit_item.status == 'LOW' %}selected{% endif %}>LOW</option>
+                <option value="Out of stock" {% if edit_item.status == 'Out of stock' %}selected{% endif %}>Out of stock</option>
+                <option value="Pending" {% if edit_item.status == 'Pending' %}selected{% endif %}>Pending</option>
+            </select>
+            <button type="submit" style="padding: 6px 14px; cursor: pointer;">Save</button>
+            <a href="/dashboard" style="text-decoration: none;">
+                <button type="button" style="padding: 6px 12px; cursor: pointer;">Cancel</button>
+            </a>
+        </form>
+    {% else %}
+        <!-- ฟอร์มปกติ (Add Mode) -->
+        <h3>Add Item</h3>
+        <form action="/items" method="post" style="display: flex; gap: 8px; align-items: center; margin-top: 10px;">
+            <input type="text" name="name" placeholder="Item name" required style="padding: 6px 10px;">
+            <input type="number" name="amount" placeholder="Amount" required style="padding: 6px 10px; width: 90px;">
+            <select name="status" style="padding: 6px 10px;">
+                <option value="OK">OK</option>
+                <option value="LOW">LOW</option>
+                <option value="Out of stock">Out of stock</option>
+                <option value="Pending">Pending</option>
+            </select>
+            <button type="submit" style="padding: 6px 16px; cursor: pointer;">Add</button>
+        </form>
+    {% endif %}
+</div>
+
+<p style="margin-bottom: 12px; font-weight: 500;">Items: {{ items | length }}</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>name</th>
+            <th>amount</th>
+            <th>status</th>
+            <th>action</th>
+        </tr>
+    </thead>
+    <tbody id="items-list">
+        {% if items | length == 0 %}
+        <tr>
+            <td colspan="5" style="text-align: center; color: #888;">No items.</td>
+        </tr>
+        {% else %}
+            {% for item in items %}
+            <tr id="row-{{ item.id }}">
+                <td>{{ loop.index }}</td>
+                <td>{{ item.name }}</td>
+                <td>{{ item.amount }}</td>
+                <td>{{ item.status if item.status else 'OK' }}</td>
+                <td>
+                    <div style="display: flex; gap: 4px;">
+                        <!-- ปุ่ม Edit -->
+                        <a href="/dashboard?edit_id={{ item.id }}" style="text-decoration: none;">
+                            <button type="button" style="cursor: pointer;">Edit</button>
+                        </a>
+                        <!-- ปุ่ม Del -->
+                        <a href="/items/delete/{{ item.id }}" style="text-decoration: none;">
+                            <button type="button" style="cursor: pointer;">Del</button>
+                        </a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        {% endif %}
+    </tbody>
+</table>
+{% endblock %}

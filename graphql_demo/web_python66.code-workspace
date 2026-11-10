@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../app"
+		},
+		{
+			"path": "../bg_tasks"
+		},
+		{
+			"path": "../graphql_class"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {}
+}
