@@ -21,6 +21,29 @@ const CATEGORIES_API_URL = `${BASE_URL}/categories`;
 const REGISTER_URL = `${BASE_URL}/register`;
 const LOGIN_URL = `${BASE_URL}/login`;
 const LOGOUT_URL = `${BASE_URL}/logout`;
+// STREAMING endpoints
+const STREAM_EVENTS_URL = `${BASE_URL}/stream/events`;
+const STREAM_PRODUCTS_URL = `${BASE_URL}/stream/products`;
+const EXPORT_CSV_URL = `${BASE_URL}/stream/products/export.csv`;
+
+type LiveEvent = {
+  type: string;
+  time: string;
+  data: {
+    user?: string;
+    product?: Product;
+    category?: Category;
+  };
+};
+
+const LIVE_EVENT_TYPES = [
+  "product_created",
+  "product_updated",
+  "product_deleted",
+  "category_created",
+  "category_updated",
+  "category_deleted",
+];
 
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -47,6 +70,13 @@ export default function Home() {
   const [loginPassword, setLoginPassword] = useState("");
   const [registerUsername, setRegisterUsername] = useState("");
   const [registerPassword, setRegisterPassword] = useState("");
+
+  // STREAMING STATE
+  const [liveConnected, setLiveConnected] = useState(false);
+  const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
+  const [streamedProducts, setStreamedProducts] = useState<Product[]>([]);
+  const [streamTotal, setStreamTotal] = useState(0);
+  const [isStreaming, setIsStreaming] = useState(false);
 
   function clearMessages() {
     setSuccessMessage("");
@@ -163,6 +193,105 @@ export default function Home() {
 
     getCategories();
   }, []);
+
+  // LIVE FEED (Server-Sent Events)
+  // Other users' changes arrive here in real time and update the product list.
+  useEffect(() => {
+    const source = new EventSource(STREAM_EVENTS_URL);
+
+    source.addEventListener("connected", () => setLiveConnected(true));
+    source.onerror = () => setLiveConnected(false);
+
+    function handleLiveEvent(event: MessageEvent) {
+      const message: LiveEvent = JSON.parse(event.data);
+      setLiveEvents((current) => [message, ...current].slice(0, 20));
+
+      const { product, category } = message.data;
+
+      if (product && message.type === "product_deleted") {
+        setProducts((current) => current.filter((item) => item.id !== product.id));
+      } else if (product) {
+        setProducts((current) =>
+          current.some((item) => item.id === product.id)
+            ? current.map((item) => (item.id === product.id ? product : item))
+            : [...current, product]
+        );
+      }
+
+      if (category && message.type === "category_deleted") {
+        setCategories((current) => current.filter((item) => item.id !== category.id));
+        setProducts((current) =>
+          current.map((item) => ({
+            ...item,
+            categories: item.categories.filter((c) => c.id !== category.id),
+          }))
+        );
+      } else if (category) {
+        setCategories((current) =>
+          current.some((item) => item.id === category.id)
+            ? current.map((item) => (item.id === category.id ? category : item))
+            : [...current, category]
+        );
+        setProducts((current) =>
+          current.map((item) => ({
+            ...item,
+            categories: item.categories.map((c) => (c.id === category.id ? category : c)),
+          }))
+        );
+      }
+    }
+
+    LIVE_EVENT_TYPES.forEach((type) => source.addEventListener(type, handleLiveEvent));
+
+    return () => source.close();
+  }, []);
+
+  // STREAM PRODUCTS ONE BY ONE (NDJSON + fetch ReadableStream)
+  async function streamProducts() {
+    setIsStreaming(true);
+    setStreamedProducts([]);
+    setStreamTotal(0);
+
+    try {
+      const response = await fetch(`${STREAM_PRODUCTS_URL}?delay=0.5`);
+      if (!response.ok || !response.body) {
+        throw new Error(`Stream failed (status ${response.status})`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? ""; // keep the incomplete last line
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const chunk = JSON.parse(line);
+          if (chunk.type === "start") setStreamTotal(chunk.total);
+          if (chunk.type === "product") {
+            setStreamedProducts((current) => [...current, chunk.product]);
+          }
+        }
+      }
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Stream failed");
+    } finally {
+      setIsStreaming(false);
+    }
+  }
+
+  function describeEvent(event: LiveEvent) {
+    const who = event.data.user ?? "someone";
+    const target = event.data.product?.name ?? event.data.category?.name ?? "";
+    const [kind, action] = event.type.split("_");
+    return `${who} ${action} ${kind} "${target}"`;
+  }
 
   // REGISTER
   async function handleRegister(event: FormEvent<HTMLFormElement>) {
@@ -290,7 +419,11 @@ export default function Home() {
       );
     }
 
-    setProducts((currentProducts) => [...currentProducts, result]);
+    // The SSE live feed may have added it already, so avoid duplicates
+    setProducts((currentProducts) => [
+      ...currentProducts.filter((product) => product.id !== result.id),
+      result,
+    ]);
 
     clearForm();
     showSuccess("Product added successfully");
@@ -454,7 +587,10 @@ export default function Home() {
         cancelCategoryEdit();
         showSuccess("Category updated successfully");
       } else {
-        setCategories((currentCategories) => [...currentCategories, result]);
+        setCategories((currentCategories) => [
+          ...currentCategories.filter((category) => category.id !== result.id),
+          result,
+        ]);
         setCategoryName("");
         showSuccess("Category added successfully");
       }
@@ -831,6 +967,73 @@ export default function Home() {
           {errorMessage}
         </p>
       )}
+
+      <section className="mb-8 rounded border p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-xl font-semibold">Live Activity</h2>
+          <span className={liveConnected ? "text-green-500" : "text-red-500"}>
+            ● {liveConnected ? "Connected (SSE)" : "Disconnected"}
+          </span>
+        </div>
+        {liveEvents.length === 0 ? (
+          <p className="text-sm text-gray-400">
+            Waiting for changes... (open this page in two tabs and edit a product)
+          </p>
+        ) : (
+          <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
+            {liveEvents.map((event, index) => (
+              <li key={`${event.time}-${index}`} className="text-gray-300">
+                <span className="text-gray-500">
+                  [{new Date(event.time).toLocaleTimeString()}]
+                </span>{" "}
+                {describeEvent(event)}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mb-8 rounded border p-4">
+        <h2 className="mb-3 text-xl font-semibold">Streaming Tools</h2>
+        <div className="mb-3 flex gap-2">
+          <button
+            type="button"
+            onClick={streamProducts}
+            disabled={isStreaming}
+            className="rounded bg-purple-600 px-4 py-2 text-white hover:bg-purple-700 disabled:opacity-50"
+          >
+            {isStreaming ? "Streaming..." : "Stream products one by one"}
+          </button>
+          <a
+            href={EXPORT_CSV_URL}
+            className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700"
+          >
+            Download CSV (streamed)
+          </a>
+        </div>
+        {(isStreaming || streamedProducts.length > 0) && (
+          <div>
+            <p className="mb-1 text-sm text-gray-400">
+              Received {streamedProducts.length} / {streamTotal}
+            </p>
+            <div className="mb-2 h-2 w-full rounded bg-gray-700">
+              <div
+                className="h-2 rounded bg-purple-500 transition-all"
+                style={{
+                  width: `${streamTotal ? (streamedProducts.length / streamTotal) * 100 : 0}%`,
+                }}
+              />
+            </div>
+            <ul className="space-y-1 text-sm">
+              {streamedProducts.map((product) => (
+                <li key={product.id}>
+                  #{product.id} {product.name} - ${product.price}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
 
       <h2 className="mb-3 text-xl font-semibold">
         Products

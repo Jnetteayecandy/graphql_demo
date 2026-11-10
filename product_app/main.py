@@ -9,6 +9,7 @@ from .schemas import CategoryCreate, CategoryResponse, CategoryUpdate, Product, 
 
 from .database import Base, get_db, engine
 from .jwt.auth import router as auth_router, get_current_user
+from .streaming import router as streaming_router, broker, product_to_dict
 
 
 Base.metadata.create_all(bind=engine)
@@ -16,6 +17,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 app.include_router(auth_router)
+app.include_router(streaming_router)
 
 @app.post("/products",response_model=ProductResponse,status_code=status.HTTP_201_CREATED,)
 async def create_product(
@@ -46,6 +48,7 @@ async def create_product(
     db.commit()
     db.refresh(db_product)
 
+    broker.publish("product_created", {"user": username, "product": product_to_dict(db_product)})
     return db_product
 
 @app.get("/products", response_model=List[ProductResponse])
@@ -65,9 +68,11 @@ async def delete_product(product_id: int, db: Session = Depends(get_db), usernam
     product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
+    deleted = product_to_dict(product)
     db.delete(product)
     db.commit()
-    return product
+    broker.publish("product_deleted", {"user": username, "product": deleted})
+    return deleted
 
 @app.put("/products/{product_id}", response_model=ProductResponse)
 async def update_product(product_id: int, product: ProductCreate, db: Session = Depends(get_db), username: str = Depends(get_current_user)):
@@ -78,6 +83,7 @@ async def update_product(product_id: int, product: ProductCreate, db: Session = 
         setattr(db_product, key, value)
     db.commit()
     db.refresh(db_product)
+    broker.publish("product_updated", {"user": username, "product": product_to_dict(db_product)})
     return db_product
 
 # category
@@ -88,6 +94,7 @@ async def create_category(category: CategoryCreate, db: Session = Depends(get_db
     db.add(db_category)
     db.commit()
     db.refresh(db_category)
+    broker.publish("category_created", {"user": username, "category": {"id": db_category.id, "name": db_category.name}})
     return db_category
 
 @app.get("/categories", response_model=List[CategoryResponse])
@@ -109,6 +116,7 @@ async def update_category(category_id: int, category: CategoryUpdate, db: Sessio
     db_category.name = category.name
     db.commit()
     db.refresh(db_category)
+    broker.publish("category_updated", {"user": username, "category": {"id": db_category.id, "name": db_category.name}})
     return db_category
 
 @app.delete("/categories/{category_id}", response_model=CategoryResponse)
@@ -116,9 +124,11 @@ async def delete_category(category_id: int, db: Session = Depends(get_db), usern
     db_category = db.query(CategoryDB).filter(CategoryDB.id == category_id).first()
     if db_category is None:
         raise HTTPException(status_code=404, detail="Category not found")
+    deleted = {"id": db_category.id, "name": db_category.name}
     db.delete(db_category)
     db.commit()
-    return db_category
+    broker.publish("category_deleted", {"user": username, "category": deleted})
+    return deleted
 
 @app.post("/products/{product_id}/categories/{category_id}")
 async def register_category(product_id: int, category_id: int, db: Session = Depends(get_db), username: str = Depends(get_current_user)):
@@ -137,6 +147,7 @@ async def register_category(product_id: int, category_id: int, db: Session = Dep
 
     product.categories.append(category)
     db.commit()
+    broker.publish("product_updated", {"user": username, "product": product_to_dict(product)})
     return {"message": "Category registered for product"}
 
 @app.delete("/products/{product_id}/categories/{category_id}")
@@ -153,6 +164,7 @@ async def unregister_category(product_id: int, category_id: int, db: Session = D
 
     product.categories.remove(category)
     db.commit()
+    broker.publish("product_updated", {"user": username, "product": product_to_dict(product)})
     return {"message": "Category removed from product"}
 
 app.add_middleware(
