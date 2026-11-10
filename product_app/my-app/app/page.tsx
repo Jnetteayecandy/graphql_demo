@@ -857,7 +857,7 @@ export default function Home() {
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             required
-            className="block w-full rounded border border-gray-500 bg-gray-900 p-2 text-white placeholder-gray-400"
+            className="block w-full rounded border p-2"
           />
 
           <input
@@ -888,7 +888,7 @@ export default function Home() {
           )}
         </form>
       ) : (
-        <p className="mb-8 text-gray-400">Log in to add or edit products.</p>
+        <p className="mb-8 text-gray-500">Log in to add or edit products.</p>
       )}
 
       {token && (
@@ -976,14 +976,14 @@ export default function Home() {
           </span>
         </div>
         {liveEvents.length === 0 ? (
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-gray-500">
             Waiting for changes... (open this page in two tabs and edit a product)
           </p>
         ) : (
           <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
             {liveEvents.map((event, index) => (
-              <li key={`${event.time}-${index}`} className="text-gray-300">
-                <span className="text-gray-500">
+              <li key={`${event.time}-${index}`} className="text-gray-700">
+                <span className="text-gray-400">
                   [{new Date(event.time).toLocaleTimeString()}]
                 </span>{" "}
                 {describeEvent(event)}
@@ -1013,10 +1013,10 @@ export default function Home() {
         </div>
         {(isStreaming || streamedProducts.length > 0) && (
           <div>
-            <p className="mb-1 text-sm text-gray-400">
+            <p className="mb-1 text-sm text-gray-500">
               Received {streamedProducts.length} / {streamTotal}
             </p>
-            <div className="mb-2 h-2 w-full rounded bg-gray-700">
+            <div className="mb-2 h-2 w-full rounded bg-gray-200">
               <div
                 className="h-2 rounded bg-purple-500 transition-all"
                 style={{
@@ -1052,15 +1052,15 @@ export default function Home() {
                   {product.name}
                 </h3>
 
-                <p className="text-gray-300">
+                <p className="text-gray-500">
                   ID: {product.id}
                 </p>
 
-                <p className="text-gray-100">
+                <p className="text-gray-700">
                   {product.description}
                 </p>
 
-                <p className="font-semibold text-white">
+                <p className="font-semibold text-gray-900">
                   Price: $
                   {product.price.toLocaleString("en-US", {
                     minimumFractionDigits: 2,
@@ -1068,7 +1068,7 @@ export default function Home() {
                   })}
                 </p>
 
-                <div className="text-gray-300">
+                <div className="text-gray-600">
                   Categories:{" "}
                   {(product.categories ?? []).length === 0 ? (
                     "None"
@@ -1077,14 +1077,14 @@ export default function Home() {
                       {(product.categories ?? []).map((category) => (
                         <span
                           key={category.id}
-                          className="inline-flex items-center gap-1 rounded bg-gray-700 px-2 py-0.5 text-white"
+                          className="inline-flex items-center gap-1 rounded bg-gray-200 px-2 py-0.5 text-gray-800"
                         >
                           {category.name}
                           {token && (
                             <button
                               type="button"
                               onClick={() => unlinkCategory(product.id, category.id)}
-                              className="text-red-300 hover:text-red-100"
+                              className="text-red-500 hover:text-red-700"
                               aria-label={`Remove ${category.name} from ${product.name}`}
                             >
                               ×
