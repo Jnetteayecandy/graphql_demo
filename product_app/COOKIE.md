@@ -34,7 +34,8 @@
 - ทุก request ใช้ `credentials: "include"` → browser แนบ cookie ไปด้วย
 - ไม่ใช้ `localStorage` และไม่ใส่ header `Authorization` เองแล้ว
 - เปิดหน้าเว็บ/refresh → เรียก `/me` ถ้า cookie ยังอยู่ก็ login ค้างไว้ให้
-- BASE_URL เปลี่ยนเป็น `http://localhost:8000` (จาก 127.0.0.1) เพื่อให้ frontend (localhost:3000) กับ backend เป็น **site เดียวกัน** ไม่งั้น cookie `SameSite=Lax` จะไม่ถูกส่ง
+- เปิดเว็บที่ `http://127.0.0.1:3000` และ backend อยู่ที่ `http://127.0.0.1:8000` → เป็น **site เดียวกัน** (127.0.0.1) cookie `SameSite=Lax` จึงถูกส่ง
+  (ถ้าเปิดเว็บด้วย `localhost:3000` browser จะมองว่าคนละ site กับ `127.0.0.1:8000` และไม่ส่ง cookie)
 
 ## กล่อง 🍪 Cookies the browser is storing
 - คอลัมน์ Value = ค่าที่ **backend ได้รับจริง** (จาก `GET /cookies`)
@@ -46,11 +47,11 @@
 - ปุ่มส่ง header พิเศษ `X-Demo` → browser ต้องส่ง **preflight** (`OPTIONS`) ไปถามก่อน
 - `GET /foo` → preflight ผ่าน → ได้ 200
 - `HEAD /foo` → preflight ได้ 400 "Disallowed CORS method" → **browser บล็อก** (ดู error ใน DevTools → Console)
-- จุดสำคัญ: endpoint `/foo` ฝั่ง server รองรับ HEAD ได้ปกติ (ลอง `curl -I http://localhost:8000/foo` ได้ 200) คนที่บล็อกคือ **browser** ตามกติกา CORS
+- จุดสำคัญ: endpoint `/foo` ฝั่ง server รองรับ HEAD ได้ปกติ (ลอง `curl -I http://127.0.0.1:8000/foo` ได้ 200) คนที่บล็อกคือ **browser** ตามกติกา CORS
 - `max_age=0` = ห้าม browser จำผล preflight ไว้ ไม่งั้นพอกด GET ผ่านแล้ว browser จะเอาผลนั้นมาใช้กับ HEAD ด้วย (เพราะ HEAD เป็น "simple method") ทำให้ HEAD ไม่ถูกบล็อก
 
 ## วิธีโชว์ให้อาจารย์ดู
-1. เปิด http://localhost:3000 (**ต้องเป็น localhost ไม่ใช่ 127.0.0.1**) → login
+1. เปิด http://127.0.0.1:3000 (**ต้องเป็น 127.0.0.1 ไม่ใช่ localhost**) → login
 2. กล่อง Cookie → ชี้ให้ดูว่า `access_token` JavaScript อ่านไม่ได้ แต่ backend ได้รับ
 3. เปิด DevTools → Console พิมพ์ `document.cookie` → จะเห็นแค่ `username=...` ไม่มี token
 4. DevTools → Application (Chrome) / Storage (Safari) → Cookies → เห็นช่อง HttpOnly ติ๊กอยู่ที่ `access_token`
@@ -61,12 +62,12 @@
 
 ## ทดสอบด้วย curl
 ```bash
-curl -c cookies.txt -X POST http://localhost:8000/login -d "username=USER&password=PASS"
+curl -c cookies.txt -X POST http://127.0.0.1:8000/login -d "username=USER&password=PASS"
 ```
 ```bash
 cat cookies.txt
 ```
 (บรรทัดที่ขึ้นต้นด้วย `#HttpOnly_` คือ cookie แบบ httponly)
 ```bash
-curl -b cookies.txt http://localhost:8000/me
+curl -b cookies.txt http://127.0.0.1:8000/me
 ```

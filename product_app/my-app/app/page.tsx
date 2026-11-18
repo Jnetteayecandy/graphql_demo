@@ -15,9 +15,11 @@ type Product = {
   categories: Category[];
 };
 
-// "localhost" (not 127.0.0.1) so the backend is the SAME SITE as the frontend
-// (localhost:3000). Otherwise the browser would not send SameSite=Lax cookies.
-const BASE_URL = "http://localhost:8000";
+// Open the website at http://127.0.0.1:3000 so the frontend and the backend are
+// the SAME SITE (127.0.0.1). Otherwise the browser would not send SameSite=Lax cookies.
+// (We use 127.0.0.1 instead of "localhost" because on a Mac "localhost" may go to
+// IPv6 ::1, where uvicorn is not listening.)
+const BASE_URL = "http://127.0.0.1:8000";
 const API_URL = `${BASE_URL}/products`;
 const CATEGORIES_API_URL = `${BASE_URL}/categories`;
 const REGISTER_URL = `${BASE_URL}/register`;
@@ -209,7 +211,12 @@ export default function Home() {
       } catch (error) {
         console.error(error);
 
-        if (error instanceof Error) {
+        if (error instanceof TypeError) {
+          // fetch() throws TypeError when the server cannot be reached at all
+          showError(
+            `Cannot reach the backend at ${BASE_URL}. Is "uvicorn product_app.main:app --reload" running?`
+          );
+        } else if (error instanceof Error) {
           showError(error.message);
         } else {
           showError("Failed to fetch products");
