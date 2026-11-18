@@ -15,12 +15,41 @@ type Product = {
   categories: Category[];
 };
 
-const BASE_URL = "http://127.0.0.1:8000";
+// "localhost" (not 127.0.0.1) so the backend is the SAME SITE as the frontend
+// (localhost:3000). Otherwise the browser would not send SameSite=Lax cookies.
+const BASE_URL = "http://localhost:8000";
 const API_URL = `${BASE_URL}/products`;
 const CATEGORIES_API_URL = `${BASE_URL}/categories`;
 const REGISTER_URL = `${BASE_URL}/register`;
 const LOGIN_URL = `${BASE_URL}/login`;
 const LOGOUT_URL = `${BASE_URL}/logout`;
+const ME_URL = `${BASE_URL}/me`;
+// COOKIE / CORS demo endpoints
+const COOKIES_URL = `${BASE_URL}/cookies`;
+const FOO_URL = `${BASE_URL}/foo`;
+
+// Every request to the backend goes through here.
+// credentials: "include" = send our cookies (incl. the httponly access_token)
+// and accept the Set-Cookie headers the backend returns.
+function apiFetch(url: string, init: RequestInit = {}) {
+  return fetch(url, { ...init, credentials: "include" });
+}
+
+type CookieRow = {
+  name: string;
+  value: string;
+  readableByJs: boolean;
+};
+
+// Names of the cookies JavaScript is allowed to see (httponly ones are hidden)
+function readJsCookieNames(): Set<string> {
+  return new Set(
+    document.cookie
+      .split(";")
+      .map((part) => part.split("=")[0].trim())
+      .filter(Boolean)
+  );
+}
 // STREAMING endpoints
 const STREAM_EVENTS_URL = `${BASE_URL}/stream/events`;
 const STREAM_PRODUCTS_URL = `${BASE_URL}/stream/products`;
@@ -63,7 +92,6 @@ export default function Home() {
   const [editingId, setEditingId] = useState<number | null>(null);
 
   // AUTH STATE
-  const [token, setToken] = useState<string | null>(null);
   const [authUsername, setAuthUsername] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [loginUsername, setLoginUsername] = useState("");
@@ -77,6 +105,10 @@ export default function Home() {
   const [streamedProducts, setStreamedProducts] = useState<Product[]>([]);
   const [streamTotal, setStreamTotal] = useState(0);
   const [isStreaming, setIsStreaming] = useState(false);
+
+  // COOKIE / CORS DEMO STATE
+  const [cookieRows, setCookieRows] = useState<CookieRow[]>([]);
+  const [corsResult, setCorsResult] = useState("");
 
   function clearMessages() {
     setSuccessMessage("");
@@ -102,51 +134,69 @@ export default function Home() {
     }
   }
 
-  function authHeaders(): HeadersInit {
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }
-
-  function persistAuth(newToken: string, username: string) {
-    setToken(newToken);
-    setAuthUsername(username);
+  // COOKIE PANEL: ask the backend which cookies it received,
+  // then check which of them JavaScript can also see in document.cookie
+  async function loadCookies() {
     try {
-      localStorage.setItem("token", newToken);
-      localStorage.setItem("username", username);
-    } catch {
-      // localStorage unavailable (e.g. private browsing) - session-only auth
+      const response = await apiFetch(COOKIES_URL);
+      const result = await parseJsonSafe(response);
+      const received: Record<string, string> = result?.cookies ?? {};
+      const jsNames = readJsCookieNames();
+      setCookieRows(
+        Object.entries(received).map(([name, value]) => ({
+          name,
+          value,
+          readableByJs: jsNames.has(name),
+        }))
+      );
+    } catch (error) {
+      console.error(error);
     }
   }
 
-  function clearAuth() {
-    setToken(null);
-    setAuthUsername(null);
+  // CORS TEST: the custom header forces the browser to send a preflight
+  // (OPTIONS) request first. The backend's CORS allows every method except HEAD.
+  async function testCors(method: "GET" | "HEAD") {
+    setCorsResult(`Sending ${method} /foo ...`);
     try {
-      localStorage.removeItem("token");
-      localStorage.removeItem("username");
+      const response = await apiFetch(FOO_URL, {
+        method,
+        headers: { "X-Demo": "cors-test" },
+      });
+      setCorsResult(`✅ ${method} /foo -> ${response.status} OK (allowed by CORS)`);
     } catch {
-      // localStorage unavailable - nothing to clear
+      setCorsResult(
+        `🚫 ${method} /foo was blocked by the browser (CORS does not allow ${method}). Open DevTools → Console to see the error.`
+      );
     }
   }
 
-  // RESTORE SESSION FROM LOCAL STORAGE
+  // RESTORE SESSION FROM THE COOKIE
+  // After a refresh the httponly cookie is still in the browser, so /me tells us who we are.
   useEffect(() => {
-    try {
-      const storedToken = localStorage.getItem("token");
-      const storedUsername = localStorage.getItem("username");
-      if (storedToken && storedUsername) {
-        setToken(storedToken);
-        setAuthUsername(storedUsername);
+    async function restoreSession() {
+      try {
+        const response = await apiFetch(ME_URL);
+        if (response.ok) {
+          const result = await response.json();
+          setAuthUsername(result.username);
+        }
+      } catch {
+        // backend not reachable - stay logged out
       }
-    } catch {
-      // localStorage unavailable - stay logged out
+      loadCookies();
     }
+
+    restoreSession();
+    // Run only once when the page opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // GET PRODUCTS
   useEffect(() => {
     async function getProducts() {
       try {
-        const response = await fetch(API_URL);
+        const response = await apiFetch(API_URL);
         const result = await parseJsonSafe(response);
 
         if (!response.ok) {
@@ -176,7 +226,7 @@ export default function Home() {
   useEffect(() => {
     async function getCategories() {
       try {
-        const response = await fetch(CATEGORIES_API_URL);
+        const response = await apiFetch(CATEGORIES_API_URL);
         const result = await parseJsonSafe(response);
 
         if (!response.ok) {
@@ -253,7 +303,7 @@ export default function Home() {
     setStreamTotal(0);
 
     try {
-      const response = await fetch(`${STREAM_PRODUCTS_URL}?delay=0.5`);
+      const response = await apiFetch(`${STREAM_PRODUCTS_URL}?delay=0.5`);
       if (!response.ok || !response.body) {
         throw new Error(`Stream failed (status ${response.status})`);
       }
@@ -299,7 +349,7 @@ export default function Home() {
     clearMessages();
 
     try {
-      const response = await fetch(REGISTER_URL, {
+      const response = await apiFetch(REGISTER_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -336,7 +386,7 @@ export default function Home() {
       body.set("username", loginUsername.trim());
       body.set("password", loginPassword);
 
-      const response = await fetch(LOGIN_URL, {
+      const response = await apiFetch(LOGIN_URL, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body,
@@ -348,9 +398,11 @@ export default function Home() {
         throw new Error(result?.detail || `Login failed (status ${response.status})`);
       }
 
-      persistAuth(result.token, loginUsername.trim());
+      // No token in the response - the backend put it in an httponly cookie
+      setAuthUsername(result.username);
       setLoginPassword("");
-      showSuccess("Logged in successfully");
+      showSuccess("Logged in successfully (token saved in an httponly cookie)");
+      loadCookies();
     } catch (error) {
       showError(error instanceof Error ? error.message : "Login failed");
     }
@@ -361,15 +413,13 @@ export default function Home() {
     clearMessages();
 
     try {
-      await fetch(LOGOUT_URL, {
-        method: "POST",
-        headers: authHeaders(),
-      });
-      showSuccess("Logged out successfully");
+      await apiFetch(LOGOUT_URL, { method: "POST" });
+      showSuccess("Logged out successfully (cookies deleted)");
     } catch (error) {
       console.error(error);
     } finally {
-      clearAuth();
+      setAuthUsername(null);
+      loadCookies();
     }
   }
 
@@ -402,11 +452,10 @@ export default function Home() {
       price: Number(price),
     };
 
-    const response = await fetch(API_URL, {
+    const response = await apiFetch(API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...authHeaders(),
       },
       body: JSON.stringify(newProduct),
     });
@@ -442,11 +491,10 @@ export default function Home() {
       price: Number(price),
     };
 
-    const response = await fetch(`${API_URL}/${editingId}`, {
+    const response = await apiFetch(`${API_URL}/${editingId}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        ...authHeaders(),
       },
       body: JSON.stringify(updatedProduct),
     });
@@ -494,9 +542,8 @@ export default function Home() {
     clearMessages();
 
     try {
-      const response = await fetch(`${API_URL}/${productId}`, {
+      const response = await apiFetch(`${API_URL}/${productId}`, {
         method: "DELETE",
-        headers: authHeaders(),
       });
 
       const result = await parseJsonSafe(response);
@@ -549,13 +596,12 @@ export default function Home() {
     const name = (isEditing ? categoryEditName : categoryName).trim();
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         isEditing ? `${CATEGORIES_API_URL}/${editingCategoryId}` : CATEGORIES_API_URL,
         {
           method: isEditing ? "PUT" : "POST",
           headers: {
             "Content-Type": "application/json",
-            ...authHeaders(),
           },
           body: JSON.stringify({ name }),
         }
@@ -608,9 +654,8 @@ export default function Home() {
     clearMessages();
 
     try {
-      const response = await fetch(`${CATEGORIES_API_URL}/${categoryId}`, {
+      const response = await apiFetch(`${CATEGORIES_API_URL}/${categoryId}`, {
         method: "DELETE",
-        headers: authHeaders(),
       });
 
       const result = await parseJsonSafe(response);
@@ -652,9 +697,9 @@ export default function Home() {
     clearMessages();
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/${productId}/categories/${category.id}`,
-        { method: "POST", headers: authHeaders() }
+        { method: "POST" }
       );
 
       const result = await parseJsonSafe(response);
@@ -688,9 +733,9 @@ export default function Home() {
     clearMessages();
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/${productId}/categories/${categoryId}`,
-        { method: "DELETE", headers: authHeaders() }
+        { method: "DELETE" }
       );
 
       const result = await parseJsonSafe(response);
@@ -731,7 +776,7 @@ export default function Home() {
       </h1>
 
       <section className="mb-8 rounded border p-4">
-        {token ? (
+        {authUsername ? (
           <div className="flex items-center justify-between">
             <p>
               Signed in as <span className="font-semibold">{authUsername}</span>
@@ -827,7 +872,7 @@ export default function Home() {
         )}
       </section>
 
-      {token ? (
+      {authUsername ? (
         <form onSubmit={saveProduct} className="mb-8 space-y-4">
           <h2 className="text-xl font-semibold">
             {editingId === null ? "Add Product" : "Edit Product"}
@@ -891,7 +936,7 @@ export default function Home() {
         <p className="mb-8 text-gray-500">Log in to add or edit products.</p>
       )}
 
-      {token && (
+      {authUsername && (
         <form onSubmit={saveCategory} className="mb-4 flex gap-2">
           <input
             type="text"
@@ -933,7 +978,7 @@ export default function Home() {
               className="flex items-center justify-between rounded border px-3 py-1 text-sm"
             >
               <span>{category.name}</span>
-              {token && (
+              {authUsername && (
                 <span className="flex gap-1">
                   <button
                     type="button"
@@ -967,6 +1012,68 @@ export default function Home() {
           {errorMessage}
         </p>
       )}
+
+      <section className="mb-8 rounded border border-dashed border-orange-400 p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-xl font-semibold">🍪 Cookies the browser is storing</h2>
+          <button
+            type="button"
+            onClick={loadCookies}
+            className="rounded bg-gray-200 px-3 py-1 text-gray-900 hover:bg-gray-300"
+          >
+            Refresh
+          </button>
+        </div>
+        {cookieRows.length === 0 ? (
+          <p className="text-sm text-gray-500">No cookies yet. Log in to get some.</p>
+        ) : (
+          <table className="w-full table-fixed border-collapse text-sm">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="w-1/4 border p-2 text-left">Cookie name</th>
+                <th className="border p-2 text-left">Value (as received by backend)</th>
+                <th className="w-1/4 border p-2 text-left">Can JavaScript read it?</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cookieRows.map((cookie) => (
+                <tr key={cookie.name}>
+                  <td className="border p-2 font-mono">{cookie.name}</td>
+                  <td className="truncate border p-2 font-mono" title={cookie.value}>
+                    {cookie.value}
+                  </td>
+                  <td className="border p-2">
+                    {cookie.readableByJs ? "✅ Yes" : "❌ No (httponly)"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="mb-8 rounded border border-dashed p-4">
+        <h2 className="mb-3 text-xl font-semibold">
+          🚫 CORS test: server allows every method except HEAD
+        </h2>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => testCors("GET")}
+            className="rounded bg-gray-200 px-3 py-1 text-gray-900 hover:bg-gray-300"
+          >
+            Call GET /foo
+          </button>
+          <button
+            type="button"
+            onClick={() => testCors("HEAD")}
+            className="rounded bg-gray-200 px-3 py-1 text-gray-900 hover:bg-gray-300"
+          >
+            Call HEAD /foo
+          </button>
+        </div>
+        {corsResult && <p className="mt-2 text-sm">{corsResult}</p>}
+      </section>
 
       <section className="mb-8 rounded border p-4">
         <div className="mb-3 flex items-center justify-between">
@@ -1080,7 +1187,7 @@ export default function Home() {
                           className="inline-flex items-center gap-1 rounded bg-gray-200 px-2 py-0.5 text-gray-800"
                         >
                           {category.name}
-                          {token && (
+                          {authUsername && (
                             <button
                               type="button"
                               onClick={() => unlinkCategory(product.id, category.id)}
@@ -1096,7 +1203,7 @@ export default function Home() {
                   )}
                 </div>
 
-                {token && (
+                {authUsername && (
                   <select
                     key={(product.categories ?? []).length}
                     defaultValue=""
@@ -1125,7 +1232,7 @@ export default function Home() {
                 )}
               </div>
 
-              {token && (
+              {authUsername && (
                 <>
                   <button
                     type="button"

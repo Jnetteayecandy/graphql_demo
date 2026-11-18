@@ -10,6 +10,7 @@ from .schemas import CategoryCreate, CategoryResponse, CategoryUpdate, Product, 
 from .database import Base, get_db, engine
 from .jwt.auth import router as auth_router, get_current_user
 from .streaming import router as streaming_router, broker, product_to_dict
+from .cookie_demo import router as cookie_demo_router
 
 
 Base.metadata.create_all(bind=engine)
@@ -18,6 +19,7 @@ app = FastAPI()
 
 app.include_router(auth_router)
 app.include_router(streaming_router)
+app.include_router(cookie_demo_router)
 
 @app.post("/products",response_model=ProductResponse,status_code=status.HTTP_201_CREATED,)
 async def create_product(
@@ -173,7 +175,13 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ],
+    # allow_credentials=True -> the browser may send/receive cookies cross-origin
     allow_credentials=True,
-    allow_methods=["*"],
+    # Every method EXCEPT HEAD (Cookie/CORS demo: "HEAD /foo" gets blocked by the browser)
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    # Don't let the browser cache the preflight (OPTIONS) result. Otherwise, after a
+    # GET /foo succeeds, the browser reuses that approval for HEAD (a "simple" method)
+    # and the CORS demo would not block HEAD.
+    max_age=0,
 )
